@@ -229,37 +229,35 @@ class MockVivaInterviewer:
     def _style_question(self, question: str, profile: InterviewerProfile) -> str:
         """Style the question based on interviewer persona"""
         prefixes = {
-            "friendly": [
+            InterviewerPersona.FRIENDLY: [
                 "Let's explore this together: ",
                 "I'd love to hear your thoughts on: ",
                 "Here's an interesting one: ",
             ],
-            "tough": [
+            InterviewerPersona.TOUGH: [
                 "Explain precisely: ",
                 "Define and elaborate: ",
                 "Demonstrate your understanding of: ",
             ],
-            "industry": [
+            InterviewerPersona.INDUSTRY: [
                 "In a real-world scenario: ",
-                "How would you apply: ",
+                "How would you apply this: ",
                 "Practically speaking: ",
             ],
-            "academic": [
+            InterviewerPersona.ACADEMIC: [
                 "From a theoretical standpoint: ",
                 "Considering the underlying principles: ",
                 "Conceptually speaking: ",
             ],
-            "quick_fire": [
+            InterviewerPersona.QUICK_FIRE: [
                 "Quick! ",
                 "Fast answer: ",
                 "",
             ]
         }
-        
-        prefix = random.choice(prefixes.get(profile.style.split(',')[0].lower().replace(' ', '_'), [""]))
-        if prefix and not prefix.endswith(' '):
-            prefix = ""
-        
+
+        persona = self.current_session.persona if self.current_session else None
+        prefix = random.choice(prefixes.get(persona, [""]))
         return f"{prefix}{question}"
     
     def evaluate_answer(self, student_answer: str, time_taken: float = None) -> Dict:

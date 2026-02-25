@@ -883,8 +883,10 @@ def handle_mock_viva_interview(current_user):
                 st.error("Please select an interviewer first!")
     
     else:
-        # Active session - show interview interface
+        # Active session - restore the session onto the interviewer instance
+        # (Streamlit reruns recreate module-level objects, losing current_session)
         session = st.session_state.mock_viva_session
+        mock_viva_interviewer.current_session = session
         profile = session.profile
         
         # Session header
