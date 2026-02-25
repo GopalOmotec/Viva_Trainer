@@ -570,7 +570,7 @@ def main():
     
     # ------------------ PDF Upload (only for PDF mode) ------------------
     if st.session_state.question_mode == "PDF Upload":
-        handle_pdf_upload(name, grade, subject, book_title)
+        handle_pdf_upload(name, grade, subject, book_title, current_user)
     
     # ------------------ Predefined Questions Mode ------------------
     elif st.session_state.question_mode == "Predefined Questions":
@@ -601,10 +601,12 @@ def main():
         handle_audio_training_lab()
     
     # ------------------ Viva Questions Interface ------------------
-    if st.session_state.all_qas:
+    # Only render the viva Q&A interface for modes that actually use it
+    viva_modes = ("PDF Upload", "Predefined Questions")
+    if st.session_state.all_qas and st.session_state.question_mode in viva_modes:
         handle_viva_interface(name, grade, subject, book_title)
 
-def handle_pdf_upload(name, grade, subject, book_title):
+def handle_pdf_upload(name, grade, subject, book_title, current_user):
     """Handle PDF upload and question generation"""
     st.markdown("""
     <div style="background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%); 
@@ -1104,6 +1106,8 @@ def handle_analytics_dashboard(current_user):
 
 def handle_viva_interface(name, grade, subject, book_title):
     """Handle the main viva questions interface"""
+    current_user = auth_manager.get_current_user()
+
     st.subheader("🧠 Viva Questions")
     
     # Display mode toggles
@@ -1128,13 +1132,13 @@ def handle_viva_interface(name, grade, subject, book_title):
     transcribed_text = UIComponents.display_audio_recording_interface(qa, current, selective_mutism_mode)
     
     if transcribed_text:
-        handle_audio_answer(qa, current, transcribed_text, selective_mutism_mode, adaptive_mode, subject)
+        handle_audio_answer(qa, current, transcribed_text, selective_mutism_mode, adaptive_mode, subject, current_user)
     
     # Handle text input
     if not selective_mutism_mode:
-        handle_text_input(qa, current, adaptive_mode, subject)
+        handle_text_input(qa, current, adaptive_mode, subject, current_user)
     else:
-        handle_selective_mutism_text_input(qa, current, subject)
+        handle_selective_mutism_text_input(qa, current, subject, current_user)
     
     # Display session statistics
     UIComponents.display_session_statistics(st.session_state.all_qas)
@@ -1148,7 +1152,7 @@ def handle_viva_interface(name, grade, subject, book_title):
         clear_session_state()
         st.rerun()
 
-def handle_audio_answer(qa, current, transcribed_text, selective_mutism_mode, adaptive_mode, subject):
+def handle_audio_answer(qa, current, transcribed_text, selective_mutism_mode, adaptive_mode, subject, current_user):
     """Handle audio answer processing"""
     st.session_state.all_qas[current]["user_answer"] = transcribed_text
     
@@ -1197,13 +1201,10 @@ def handle_audio_answer(qa, current, transcribed_text, selective_mutism_mode, ad
     with st.expander("🎙️ Voice Analysis Feedback", expanded=True):
         col1, col2, col3 = st.columns(3)
         with col1:
-            pace_emoji = "✅" if voice_result.pace_rating == "Optimal" else "⚠️"
             st.metric("Speaking Pace", f"{voice_result.words_per_minute:.0f} WPM", voice_result.pace_rating)
         with col2:
-            filler_emoji = "✅" if voice_result.filler_word_percentage < 5 else "⚠️"
             st.metric("Filler Words", f"{voice_result.filler_word_count}", f"{voice_result.filler_word_percentage:.1f}%")
         with col3:
-            conf_emoji = "✅" if voice_result.confidence_score >= 70 else "⚠️"
             st.metric("Confidence", f"{voice_result.confidence_score:.0f}/100", voice_result.confidence_rating)
         
         # Show improvement tips
@@ -1237,7 +1238,7 @@ def handle_audio_answer(qa, current, transcribed_text, selective_mutism_mode, ad
         pass  # Silently fail if voice analysis save fails
     
     # Save to database
-    save_answer_to_database(current, transcribed_text, score, 'audio', subject)
+    save_answer_to_database(current, transcribed_text, score, 'audio', subject, current_user)
     
     # NEW: Log study activity
     try:
@@ -1260,7 +1261,7 @@ def handle_audio_answer(qa, current, transcribed_text, selective_mutism_mode, ad
     # Handle next question logic
     handle_next_question_logic(score, adaptive_mode, selective_mutism_mode, current, qa)
 
-def handle_text_input(qa, current, adaptive_mode, subject):
+def handle_text_input(qa, current, adaptive_mode, subject, current_user):
     """Handle regular text input"""
     manual_answer = UIComponents.display_text_input(qa, current, False)
     
@@ -1279,7 +1280,7 @@ def handle_text_input(qa, current, adaptive_mode, subject):
             UIComponents.display_evaluation_result(evaluation, 'standard')
             
             # Save to database
-            save_answer_to_database(current, manual_answer, score, 'text', subject)
+            save_answer_to_database(current, manual_answer, score, 'text', subject, current_user)
             
             # Add to used indices
             if current not in st.session_state.used_q_indices:
@@ -1290,7 +1291,7 @@ def handle_text_input(qa, current, adaptive_mode, subject):
         else:
             st.warning("Please provide an answer.")
 
-def handle_selective_mutism_text_input(qa, current, subject):
+def handle_selective_mutism_text_input(qa, current, subject, current_user):
     """Handle selective mutism text input"""
     backup_answer = UIComponents.display_text_input(qa, current, True)
     
@@ -1319,7 +1320,7 @@ def handle_selective_mutism_text_input(qa, current, subject):
             st.session_state.sm_progress_milestones = selective_mutism_support.state.progress_milestones
             
             # Save to database
-            save_answer_to_database(current, backup_answer, score, 'selective_mutism_text', subject)
+            save_answer_to_database(current, backup_answer, score, 'selective_mutism_text', subject, current_user)
             
             # Add to used indices
             if current not in st.session_state.used_q_indices:
@@ -1369,7 +1370,7 @@ def handle_next_question_logic(score, adaptive_mode, selective_mutism_mode, curr
                 st.session_state.qa_index = next_unanswered
                 st.rerun()
 
-def save_answer_to_database(current, answer_text, score, method, subject):
+def save_answer_to_database(current, answer_text, score, method, subject, current_user):
     """Save answer to database"""
     try:
         if st.session_state.current_conversation_id:
@@ -1378,7 +1379,8 @@ def save_answer_to_database(current, answer_text, score, method, subject):
             if current < len(questions):
                 question_id = questions[current]['id']
                 db_manager.save_user_answer(question_id, answer_text, score, answer_method=method)
-                db_manager.update_user_progress(current_user['id'], subject)
+                if current_user:
+                    db_manager.update_user_progress(current_user['id'], subject)
         elif st.session_state.current_predefined_session_id:
             # Predefined questions
             qa = st.session_state.all_qas[current]
@@ -1391,7 +1393,8 @@ def save_answer_to_database(current, answer_text, score, method, subject):
                     score,
                     answer_method=method
                 )
-                db_manager.update_user_progress(current_user['id'], subject)
+                if current_user:
+                    db_manager.update_user_progress(current_user['id'], subject)
     except Exception as e:
         st.error(f"Error saving answer: {str(e)}")
 
